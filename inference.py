@@ -182,6 +182,7 @@ if __name__ == "__main__":
             f'{prefix}_{os.path.splitext(os.path.basename(opts.video_path))[0]}'
         )
     opts.save_dir = os.path.join(opts.out_dir, opts.exp_name)
+    print("opts.save_dir:", opts.save_dir)
     os.makedirs(opts.save_dir, exist_ok=True)
     pvd = TrajCrafter(opts)
     if opts.mode == 'gradual':

@@ -203,6 +203,54 @@ def generate_traj_txt(c2ws_anchor, phi, theta, r, frame, device):
     c2ws = torch.cat(c2ws_list, dim=0)
     return c2ws
 
+import torch
+import numpy as np
+
+def export_ply(world_points_homo, out_path="world_points.ply", frame1=None, depth1=None,
+               b_idx=0, max_points=500000, depth_min=1e-3, depth_max=1000.0):
+    xyz = world_points_homo[b_idx, :, :, :3, 0].reshape(-1, 3)
+    valid = torch.isfinite(xyz).all(dim=1)
+
+    if depth1 is not None:
+        d = depth1[b_idx, 0].reshape(-1)
+        valid = valid & (d > depth_min) & (d < depth_max)
+
+    xyz = xyz[valid]
+
+    # 下采样
+    if xyz.shape[0] > max_points:
+        idx = torch.randperm(xyz.shape[0], device=xyz.device)[:max_points]
+        xyz = xyz[idx]
+        valid_idx = torch.nonzero(valid, as_tuple=False).squeeze(1)[idx]
+    else:
+        valid_idx = torch.nonzero(valid, as_tuple=False).squeeze(1)
+
+    xyz = xyz.detach().cpu().numpy()
+
+    colors = None
+    if frame1 is not None:
+        rgb = frame1[b_idx].permute(1,2,0).reshape(-1,3)[valid_idx]
+        if rgb.min() < 0:  # [-1,1] -> [0,1]
+            rgb = (rgb + 1.0) / 2.0
+        rgb = torch.clamp(rgb, 0, 1).detach().cpu().numpy()
+        colors = (rgb * 255).astype(np.uint8)
+
+    # 写 ASCII PLY（简单稳）
+    with open(out_path, "w") as f:
+        f.write("ply\nformat ascii 1.0\n")
+        f.write(f"element vertex {xyz.shape[0]}\n")
+        f.write("property float x\nproperty float y\nproperty float z\n")
+        if colors is not None:
+            f.write("property uchar red\nproperty uchar green\nproperty uchar blue\n")
+        f.write("end_header\n")
+        if colors is None:
+            for p in xyz:
+                f.write(f"{p[0]} {p[1]} {p[2]}\n")
+        else:
+            for p, c in zip(xyz, colors):
+                f.write(f"{p[0]} {p[1]} {p[2]} {int(c[0])} {int(c[1])} {int(c[2])}\n")
+
+    print("saved:", out_path)
 
 class Warper:
     def __init__(self, resolution: tuple = None, device: str = 'gpu0'):
@@ -220,6 +268,7 @@ class Warper:
         transformation2: torch.Tensor,
         intrinsic1: torch.Tensor,
         intrinsic2: Optional[torch.Tensor],
+        i,
         mask=False,
         twice=False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -262,7 +311,7 @@ class Warper:
         intrinsic2 = intrinsic2.to(self.device).to(self.dtype)
 
         trans_points1 = self.compute_transformed_points(
-            depth1, transformation1, transformation2, intrinsic1, intrinsic2
+            depth1, transformation1, transformation2, intrinsic1, intrinsic2, frame1, i
         )
         trans_coordinates = (
             trans_points1[:, :, :, :2, 0] / trans_points1[:, :, :, 2:3, 0]
@@ -303,6 +352,8 @@ class Warper:
         transformation2: torch.Tensor,
         intrinsic1: torch.Tensor,
         intrinsic2: Optional[torch.Tensor],
+        frame1: torch.Tensor,
+        i,
     ):
         """
         Computes transformed position for each pixel location
@@ -339,11 +390,20 @@ class Warper:
         )  # (b, h, w, 3, 1)
         world_points = depth_4d * unnormalized_pos  # (b, h, w, 3, 1)
         world_points_homo = torch.cat([world_points, ones_4d], dim=3)  # (b, h, w, 4, 1)
+        # export_ply(world_points_homo, os.path.join("pointcloud", f"wp{i}.ply"), frame1=frame1, depth1=depth1)
+        # print("✨output")
         trans_world_homo = torch.matmul(trans_4d, world_points_homo)  # (b, h, w, 4, 1)
+        if i == 1 or i == 25 or i == 48:
+            export_ply(trans_world_homo, os.path.join("pointcloud", f"tranwp{i}.ply"), frame1=frame1, depth1=depth1)
+            print("✨output")
+            d = depth1
+            print(d.min().item(), d.max().item(), d.mean().item(), d.std().item())
         trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
         trans_norm_points = torch.matmul(intrinsic2_4d, trans_world)  # (b, h, w, 3, 1)
         return trans_norm_points
 
+# warped_frame2, mask2 = self.bilinear_splatting(
+#                 frame1, mask1, trans_depth1, flow12, None, is_image=True )
     def bilinear_splatting(
         self,
         frame1: torch.Tensor,
@@ -500,6 +560,7 @@ class Warper:
             mask, cropped_warped_frame / cropped_weights, zero_tensor
         )
         mask2 = mask.to(frame1)
+
 
         if is_image:
             assert warped_frame2.min() >= -1.1  # Allow for rounding errors

@@ -64,6 +64,7 @@ class CogVideoXPatchEmbed(nn.Module):
             bias=bias,
         )
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
+        self.device = "cuda:0"
 
     def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
         r"""
@@ -77,6 +78,7 @@ class CogVideoXPatchEmbed(nn.Module):
 
         batch, num_frames, channels, height, width = image_embeds.shape
         image_embeds = image_embeds.reshape(-1, channels, height, width)
+        image_embeds = image_embeds.to(device=self.device)
         image_embeds = self.proj(image_embeds)
         image_embeds = image_embeds.view(batch, num_frames, *image_embeds.shape[1:])
         image_embeds = image_embeds.flatten(3).transpose(
@@ -693,6 +695,12 @@ class CrossTransformer3DModel(ModelMixin, ConfigMixin):
         # [2, 13, 16, 48, 84] cat [2, 13, 17, 48, 84] = [2, 13, 33, 48, 84]
         hidden_states = torch.concat([hidden_states, inpaint_latents], 2)
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
+        # print("cross_latents:", cross_latents.device, cross_latents.dtype)
+        # print("proj weight:", self.ref_patch_embed.proj.weight.device, self.ref_patch_embed.proj.weight.dtype)
+
+        w = self.ref_patch_embed.proj.weight
+        if cross_latents.device != w.device or cross_latents.dtype != w.dtype:
+            cross_latents = cross_latents.to(device=w.device, dtype=w.dtype)
         if self.is_train_cross:
             cross_hidden_states = self.ref_patch_embed(cross_latents)
 

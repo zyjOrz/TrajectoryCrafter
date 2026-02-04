@@ -24,7 +24,7 @@ python inference.py \
 
 # # bullet time
 # python inference.py \
-#     --video_path './test/videos/p7.mp4' \
+#     --video_path 'KK.mp4' \
 #     --stride 2 \
 #     --out_dir experiments \
 #     --radius_scale 1 \
@@ -44,4 +44,4 @@ python inference.py \
 #     --mode 'zoom' \
 #     --mask \
 #     --target_pose 0 0 0.5 0 0 \
-#     --traj_txt 'test/trajs/loop2.txt' \
+#     --traj_txt 'test/trajs/loop2.txt' 

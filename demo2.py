@@ -72,7 +72,6 @@ class TrajCrafter:
                 pose_t[i : i + 1],
                 K[i : i + 1],
                 None,
-                i,
                 opts.mask,
                 twice=False,
             )

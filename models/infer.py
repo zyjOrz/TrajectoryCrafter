@@ -21,6 +21,7 @@ class DepthCrafterDemo:
             unet_path,
             low_cpu_mem_usage=True,
             torch_dtype=torch.float16,
+            cache_dir="./ckpts",
         )
         # load weights of other components from the provided checkpoint
         self.pipe = DepthCrafterPipeline.from_pretrained(
@@ -28,6 +29,7 @@ class DepthCrafterDemo:
             unet=unet,
             torch_dtype=torch.float16,
             variant="fp16",
+            cache_dir="./ckpts",
         )
 
         # for saving memory, we can offload the model to CPU, or even run the model sequentially to save more memory
